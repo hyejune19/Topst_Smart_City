@@ -1,9 +1,18 @@
 var NodeHelper = require("node_helper");
 const socketIO = require('socket.io');
 const { exec } = require('child_process'); // 추가
+const fs = require('fs');
 
+var musicFiles = [];
+var musicFolder = '/root/MagicMirror/Music/';
+var currentTrackIndex = 0;
+var beepInProgress = false;
 module.exports = NodeHelper.create({
     start: function () {
+        car1 = "";
+        car2 = "";
+        this.File_Load();
+
         this.config = {};
 
         // Express 앱 생성
@@ -19,8 +28,7 @@ module.exports = NodeHelper.create({
         server.listen(port, () => {
             console.log(`Server is running on port ${port}`);
         });
-        car1 = "";
-        car2 = "";
+
         io.on('connection', (socket) => {
             console.log('Client connected');
 
@@ -47,22 +55,65 @@ module.exports = NodeHelper.create({
                 if (obj == 'play_radio') 
                 {
                     this.Play_Radio();
-                    console.log('라디오 재생')
+                    console.log('라디오 재생');
                     this.sendSocketNotification("UPDATE_TEXT", 'play radio');
                 }
-                else if(obj == 'stop_radio')
+                else if (obj == 'stop_radio') 
                 {
                     this.Stop_Radio();
-                    console.log('라디오 중지')
-                    this.sendSocketNotification("UPDATE_TEXT", 'stop radio');
+                    console.log('라디오 중지');
                 }
             })
 
             socket.on('car', (obj) => {
                 console.log('Server car received data:', obj);
 
-                io.to(car2).emit('start', obj);
+                io.to(car2).emit('Car_State', obj);
             })
+
+            socket.on('Play_Music', (obj) =>{
+                console.log('Play_Music:', obj);
+                this.Play_Music();
+            })
+
+            socket.on('Next_Music', (obj) =>{
+                currentTrackIndex++;
+                if (currentTrackIndex >= musicFiles.length) {
+                    currentTrackIndex = 0;
+                }
+                console.log('Next_Music:', obj);
+                this.Play_Music();
+                this.sendSocketNotification("UPDATE_TEXT", musicFiles[currentTrackIndex]);
+            })
+
+            socket.on('beep', (obj) => {
+                if (!beepInProgress) { // 이미 beep가 진행 중인지 체크
+                    beepInProgress = true; // 플래그를 true로 설정
+                    console.log('정면에 장애물이 있습니다.', obj);
+                    currentTrackIndex = 0;
+                    this.Beep();
+                    this.sendSocketNotification("UPDATE_TEXT", 'Beep');
+                    io.to(car2).emit('Car_State', obj);
+                    // 일정 지연 시간 후에 또는 beep 재생이 끝났을 때 플래그를 다시 false로 설정
+                    setTimeout(() => {
+                        beepInProgress = false;
+                        this.Stop_Radio();
+                    }, 3000);
+                }
+            });
+
+            socket.on('Car_State', (obj) => {
+                if(obj == 'start')
+                {
+                    io.to(car1).emit('Car_State', obj);
+                    console.log('car start');
+                }
+                if(obj == 'stop')
+                {
+                    io.to(car1).emit('Car_State', obj);
+                    console.log('car stop');
+                }
+            });
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected');
@@ -101,5 +152,57 @@ module.exports = NodeHelper.create({
                 console.log('Stopped vlc:', stdout);
             }
         });
-    }
-});
+    },
+    
+    File_Load: function () { // Pass musicFolder as an argument
+        fs.readdir(musicFolder, (err, files) => {
+            if (!err) {
+                musicFiles = files.filter(file => file.endsWith('.mp3'));
+                console.log('파일 불러옴', musicFiles);
+                if (musicFiles.length === 0) {
+                    console.log('No music files found in the directory.');
+                    return;
+                }
+            } else {
+                console.error(`Error reading directory: ${err}`);
+            }
+        });
+    },
+    Play_Music: function () {
+        this.Stop_Radio();
+    
+        if (musicFiles.length === 0) {
+            console.log('음악 파일이 없습니다.');
+            return;
+        }
+    
+        const currentTrackPath = musicFolder + musicFiles[currentTrackIndex];
+        const command = `vlc "${currentTrackPath}" --play-and-exit`;
+    
+        setTimeout(() => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Error executing vlc command: ${error}`);
+                } else {
+                    console.log(`Music playback started: ${currentTrackPath}`);
+                }
+            });
+        }, 1000);  
+    },
+    Beep: function () {
+        this.Stop_Radio();
+    
+        const currentTrackPath = "/root/MagicMirror/Beep/New project.mp3";
+        const command = `vlc "${currentTrackPath}" --play-and-exit`;
+    
+        setTimeout(() => {
+            exec(command, (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Error executing vlc command: ${error}`);
+                } else {
+                    console.log(`Music playback started: ${currentTrackPath}`);
+                }
+            });
+        }, 1000);  
+    },
+})
