@@ -97,10 +97,16 @@ TOPST 보드 GPIO 핀 구성
 ![Alt text](<Untitled (3).png>)
 
 
-모터 드라이버 핀 구성
+모터 드라이버 핀 구성 
 
 
 ![Alt text](<Untitled (4).png>)
+
+
+enA, enB에 pwm 핀 연결(추가)
+
+
+![Alt text](<112207.png>)
 
 
 ## 핀 연결
